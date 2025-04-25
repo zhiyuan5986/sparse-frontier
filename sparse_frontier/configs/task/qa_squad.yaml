@@ -1,0 +1,6 @@
+# @package _global_
+
+task:
+  name: qa_squad
+  args:
+    dataset_name: squad

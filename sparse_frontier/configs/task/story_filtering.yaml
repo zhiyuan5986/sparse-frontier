@@ -1,0 +1,6 @@
+# @package _global_
+
+task:
+  name: story_filtering
+  args:
+    chapters_in_question: 3

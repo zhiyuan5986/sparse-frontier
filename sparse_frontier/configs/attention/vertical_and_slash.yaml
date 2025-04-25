@@ -1,0 +1,8 @@
+# @package _global_
+
+attention:
+  name: vertical_and_slash
+  args:
+    vertical_size: 512
+    slash_size: 512
+    approximation_size: 256

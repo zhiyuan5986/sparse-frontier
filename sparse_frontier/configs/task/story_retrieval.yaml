@@ -1,0 +1,6 @@
+# @package _global_
+
+task:
+  name: story_retrieval
+  args:
+    num_queries: 16

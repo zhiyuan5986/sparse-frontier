@@ -1,0 +1,4 @@
+# @package _global_
+
+task:
+  name: story_multihop

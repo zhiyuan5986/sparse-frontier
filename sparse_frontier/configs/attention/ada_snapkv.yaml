@@ -1,0 +1,11 @@
+# @package _global_
+
+attention:
+  name: ada_snapkv
+  args:
+    token_capacity: 1024
+    approximation_window: 256
+    kernel_size: 21
+    local_window: 128
+    prefix_tokens: 4
+    min_head_capacity_ratio: 0.2

@@ -1,0 +1,13 @@
+# @package _global_
+
+model:
+  name: qwen_32b
+  path: ${paths.checkpoints}/Qwen2.5-32B-Instruct
+  num_q_heads: 40
+  num_kv_heads: 8
+  num_layers: 64
+  hidden_dim: 5120
+  intermediate_dim: 27648
+  vocab_size: 152064
+
+tp: 2 

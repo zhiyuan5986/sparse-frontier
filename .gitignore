@@ -1,0 +1,10 @@
+.ipynb_checkpoints/
+__pycache__/
+.vscode/
+.venv
+.eggs
+*.egg-info
+*.log
+*.so
+build
+.DS_Store

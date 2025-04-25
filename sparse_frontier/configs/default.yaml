@@ -1,0 +1,32 @@
+defaults:
+  - _self_
+  - model: qwen_7b
+  - attention: dense
+  - task: ruler_niah
+
+overwrite: false # overwrite current results
+debug: false # changes the directory we create data and results in - this makes overwrite safe to use
+mode: "all"
+gpus: 1
+
+samples: 100
+max_input_tokens: 8192
+max_output_tokens: 1024
+kv_cache_block_size: 256
+random_seed: 43
+
+print_eval_results: true
+
+paths:
+  results: /writeable/evaluation_results
+  predictions: /writeable/predictions
+  data: /writeable/data
+  debug: /writeable/debug
+  checkpoints: /writeable/checkpoints
+
+hydra:
+  run:
+    dir: /writeable/evaluation_results/hydraoutputs/${now:%Y-%m-%d_%H-%M-%S}
+  job:
+    env_set:
+      OMP_NUM_THREADS: 1

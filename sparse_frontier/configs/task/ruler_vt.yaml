@@ -1,0 +1,7 @@
+# @package _global_
+
+task:
+  name: ruler_vt
+  args:
+    num_chains: 8
+    num_hops: 4

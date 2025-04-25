@@ -1,0 +1,8 @@
+# @package _global_
+
+task:
+  name: ruler_cwe
+  args:
+    num_common_words: 10
+    common_word_frequency: 30
+    rare_word_frequency: 3

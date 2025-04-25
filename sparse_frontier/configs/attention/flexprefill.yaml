@@ -1,0 +1,8 @@
+# @package _global_
+
+attention:
+  name: flexprefill
+  args:
+    alpha: 0.65
+    approximation_size: 512
+    min_budget: 512

@@ -1,0 +1,6 @@
+# @package _global_
+
+task:
+  name: qa_toefl
+  args:
+    dataset_name: toeflqa
