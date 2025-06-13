@@ -4,10 +4,12 @@ defaults:
   - attention: dense
   - task: ruler_niah
 
-overwrite: false # overwrite current results
-debug: false # changes the directory we create data and results in - this makes overwrite safe to use
 mode: "all"
+overwrite: false
+debug: false
+
 gpus: 1
+tp: 1
 
 samples: 100
 max_input_tokens: 8192
@@ -18,15 +20,15 @@ random_seed: 43
 print_eval_results: true
 
 paths:
-  results: /writeable/evaluation_results
-  predictions: /writeable/predictions
-  data: /writeable/data
-  debug: /writeable/debug
-  checkpoints: /writeable/checkpoints
+  results: ./experiments/results
+  predictions: ./experiments/predictions
+  data: ./experiments/data
+  debug: ./experiments/debug
+  checkpoints: ./experiments/checkpoints
 
 hydra:
   run:
-    dir: /writeable/evaluation_results/hydraoutputs/${now:%Y-%m-%d_%H-%M-%S}
+    dir: ./experiments/hydraoutputs/${now:%Y-%m-%d_%H-%M-%S}
   job:
     env_set:
       OMP_NUM_THREADS: 1

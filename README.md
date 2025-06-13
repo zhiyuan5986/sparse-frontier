@@ -4,22 +4,28 @@
 
 ## TL;DR
 
-This repository contains the official implementation for the paper "[The Sparse Frontier: Sparse Attention Trade-offs in Transformer LLMs](https://arxiv.org/abs/2504.17768)". We perform a large-scale empirical evaluation of *training-free* sparse attention methods in LLMs (7B to 72B parameters) on long sequences (16K to 128K tokens) across diverse tasks.
+**The evaluation framework for training-free sparse attention in LLMs**
 
-**Key Findings:**
-1.  **IsoFLOPS:** For very long sequences, larger, highly sparse models are preferable to smaller, dense ones under a fixed compute budget.
-2.  **Sparsity Limits:** Higher sparsity can be tolerated during decoding than prefilling while preserving accuracy (correlating with model size), but even moderate sparsity often degrades performance on at least one task.
-3.  **No Universal Best:** The optimal sparse attention strategy depends on the task and inference phase; no single method excels everywhere.
-4.  **Scaling Laws:** We introduce and validate scaling laws specific to sparse attention, suggesting our findings generalize.
+This repository serves two main purposes:
+1. **Reproducing results** from our paper "[The Sparse Frontier: Sparse Attention Trade-offs in Transformer LLMs](https://arxiv.org/abs/2504.17768)"
+2. **Providing a starting point** for your own sparse attention research and development
 
-**Conclusion:** Sparse attention is a key tool for long-context LLMs but requires careful evaluation of accuracy-efficiency trade-offs for specific applications. This codebase enables reproducing our experiments and further research.
+### Key Features
+
+- **Comprehensive task suite**: 9 diverse evaluation tasks spanning retrieval, multi-hop reasoning, and information aggregation with carefully tuned prompts and clean preprocessing pipelines
+- **Model-agnostic architecture**: Universal attention interface that works with any vLLM-supported model without model-specific modifications
+- **Clean extensibility**: Abstract base classes (`AbstractTask`, `AbstractSample`) for easy extension to new tasks and attention mechanisms
+
+### Getting Started with Sparse Attention
+
+If you're new to sparse attention and want to understand how these patterns work, we recommend starting with our companion repository: [nano-sparse-attention](https://github.com/PiotrNawrot/nano-sparse-attention). It provides clean, educational PyTorch implementations with interactive Jupyter notebooks that you can use to experiment and learn before diving into the optimized implementations in this repository.
 
 ## Setup
 
 Follow these steps to set up the environment and prepare for running experiments:
 
 1.  **Create Virtual Environment and Install Dependencies:**
-    Set up a dedicated Python environment and install the required packages, including compiling custom CUDA kernels.
+    Set up a dedicated Python environment and install the required packages, including compiling custom CUDA kernels
 
     ```bash
     # Create a virtual environment using Python 3.11
@@ -41,6 +47,7 @@ Follow these steps to set up the environment and prepare for running experiments
     # Adjust MAX_JOBS based on your system core count for faster compilation
     MAX_JOBS=8 python compile.py build_ext --inplace --build-lib ./sparse_frontier/modelling/attention/minference
     ```
+    For reference, the complete list of dependencies used in our experiments is available in `./assets/pipfreeze.txt`.
 
 2.  **Configure Paths:**
     Modify the default configuration file to specify where data, results, and checkpoints should be stored on your system.
@@ -48,7 +55,7 @@ Follow these steps to set up the environment and prepare for running experiments
     *   Edit the `paths` section in `configs/default.yaml`.
 
 3.  **Download Model Checkpoints:**
-    Obtain the pre-trained model weights you intend to evaluate from Hugging Face Hub. 
+    Obtain the pre-trained model weights you intend to evaluate from Hugging Face Hub. We prefer doing this manually instead of downloading it from HF as this way we have better control of what we download and the paths of everything.
     
     *   Ensure the final directory structure for the downloaded checkpoints matches the format expected by the corresponding model configuration file (e.g., as defined in `configs/model/qwen_7b.yaml`). The `model.path` variable in these configs should point to the directory containing the model files.
 
@@ -56,20 +63,29 @@ Follow these steps to set up the environment and prepare for running experiments
 
 ### Reproduce your experiments
 
-Experiments are launched using the main script `sparse_frontier.main`. Configuration is managed via [Hydra](https://hydra.cc/), allowing parameters to be set in YAML files (primarily `configs/default.yaml`) and overridden directly from the command line.
+Experiments are launched using the main script `sparse_frontier.main`. The framework uses [Hydra](https://hydra.cc/) for configuration management. All configurations are stored in YAML files within the `sparse_frontier/configs/` directory, organized into three main categories:
+
+- **`attention/`**: Configurations for different sparse attention mechanisms (dense, quest, snapkv, etc.)
+- **`task/`**: Configurations for evaluation tasks (RULER, QA, Story tasks)
+- **`model/`**: Configurations for different model architectures (Qwen2.5-7B to 72B)
 
 The execution pipeline typically involves three stages, controlled by the `mode` parameter (defaulting to `all`):
-1.  **Preparation (`preparation.py`):** Generates and saves task-specific data based on the selected `task` configuration. Tasks are defined in `sparse_frontier/tasks/` (inheriting from `AbstractTask` and `AbstractSample`) and registered in `sparse_frontier/tasks/registry.py`.
-2.  **Prediction (`prediction.py`):** Runs the specified `model` with the chosen `attention` mechanism on the prepared data, saving the model outputs. Attention mechanisms are defined in `sparse_frontier/modelling/attention/` and registered in `sparse_frontier/modelling/attention/registry.py`.
+1.  **Preparation (`preparation.py`):** Generates and saves task-specific data based on the selected `task` configuration. Tasks are defined in `sparse_frontier/tasks/` (inheriting from [AbstractTask](./sparse_frontier/tasks/abstract_task.py) and [AbstractSample](./sparse_frontier/tasks/abstract_sample.py)) and registered in [TASK_REGISTRY](sparse_frontier/tasks/registry.py).
+2.  **Prediction (`prediction.py`):** Runs the specified `model` with the chosen `attention` mechanism on the prepared data, saving the model outputs. Attention mechanisms are implemented in `sparse_frontier/modelling/attention/` and registered in [ATTENTION_REGISTRY](sparse_frontier/modelling/attention/registry.py).
 3.  **Evaluation (`evaluation.py`):** Compares the predictions against the gold answers using the task's specific evaluation logic and saves the final metrics.
 
-For example, to run the `ruler_niah` task using the `llama_8b` model configuration with standard `dense` attention on 4 samples using 2 GPUs:
-
+**Quick Start Examples:**
 ```bash
-python -m sparse_frontier.main task=ruler_niah model=llama_8b attention=dense samples=4 gpus=2
+# Basic experiment with command line overrides
+python -m sparse_frontier.main task=ruler_niah model=qwen_7b attention=quest samples=50
+
+# Override attention parameters
+python -m sparse_frontier.main attention=quest attention.args.token_budget=2048
 ```
 
-### Understand how you modified vLLM to test my own Sparse Attention
+For detailed configuration documentation see **[CONFIGURATION.md](CONFIGURATION.md)**.
+
+### ( Test existing / Develop my own ) Training Free Sparse Attention
 
 We integrate custom sparse attention mechanisms by intercepting and modifying vLLM's standard attention execution flow. Here's a breakdown of the key components involved:
 
@@ -84,13 +100,13 @@ We integrate custom sparse attention mechanisms by intercepting and modifying vL
     *   Implement the necessary methods based on your pattern's requirements:
         *   `__call__(self, queries, keys, values, layer_idx)`: Implement the attention computation logic for the prefill phase. The default implementation uses standard FlashAttention.
         *   `decode(self, query, keys, values, k_cache, v_cache, cache_seqlens, output, layer_idx)`: Implement the attention computation for the single-token decoding phase, typically involving interaction with the KV cache. The default uses `flash_attn_with_kvcache`. Specific methods like Quest (`efficient_decoding.py`) implement custom logic (e.g., page selection).
-        *   `kv_compress(self, queries, keys, values)`: (Optional) Implement logic to compress or select keys and values *after* the prefill computation, before they are written to the KV cache by `update_kv_cache` in `handler.py`. See `SnapKVCompression` (`kv_compression.py`) for an example. It should return the processed keys, values, and the resulting sequence lengths per head.
+        *   `kv_compress(self, queries, keys, values)`: Implement logic to compress or select keys and values *after* the prefill computation, before they are written to the KV cache by `update_kv_cache` in `handler.py`. See `SnapKVCompression` (`kv_compression.py`) for an example.
 
-5.  **Registration:** Add your new class to the `ATTENTION_REGISTRY` in `sparse_frontier/modelling/attention/registry.py`. This allows selecting your custom attention mechanism through the experiment configuration files.
+5.  **Registration and Configuration:** Add your new class to the `ATTENTION_REGISTRY` in `sparse_frontier/modelling/attention/registry.py`. Additionally, create a corresponding YAML configuration file in `sparse_frontier/configs/attention/` that specifies any initialization arguments under `args`. This allows selecting your custom attention mechanism through the experiment configuration files.
 
-### Understand or Create Experimental Datasets
+### Extend the Test Data
 
-Experimental data generation is handled by task-specific modules located in `sparse_frontier/tasks/`. Each task implements `AbstractTask` and `AbstractSample` subclasses (defined in `sparse_frontier/tasks/abstract_*.py`) to define data loading, preprocessing, and the formatting of individual input prompts. Tasks are registered in `sparse_frontier/tasks/registry.py` and selected via configuration (e.g., `task=your_task_name`). The `preparation.py` script orchestrates the generation process based on the configuration, saving the formatted samples. See existing tasks like `QATask` (`qa_task.py`) or the Story task (`narrative.py`, `templates.py`) for implementation examples.
+Experimental data generation is handled by task-specific modules located in `sparse_frontier/tasks/`. Each task implements `AbstractTask` and `AbstractSample` subclasses (defined in `sparse_frontier/tasks/abstract_*.py`) to define input / output creation, and task-specific evaluation. Tasks are registered in `sparse_frontier/tasks/registry.py` and selected via configuration (e.g., `task=your_task_name`). The `preparation.py` script orchestrates the generation process based on the configuration, saving the formatted samples. See existing tasks like `QATask` (`qa_task.py`) or the Ruler tasks (`niah.py`, `cwe.py`, `vt.py`) for implementation examples.
 
 ## References
 
@@ -116,7 +132,7 @@ Our evaluation framework includes the following tasks:
 
 2. **QA Tasks**:
    - Toefl and Quality datasets from [LC-VS-RAG](https://github.com/lixinze777/LC_VS_RAG)
-   - Squad dataset from [NVIDIA/RULER](https://github.com/NVIDIA/RULER)
+   - SQuAD dataset from [NVIDIA/RULER](https://github.com/NVIDIA/RULER)
 
 3. **Novel Story Tasks**: Narrative tasks developed specifically for this project.
 
