@@ -5,3 +5,4 @@ attention:
   args:
     token_budget: 1024
     page_size: 16
+    share_pages: true

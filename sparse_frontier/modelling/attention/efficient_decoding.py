@@ -39,6 +39,7 @@ def _select_pages(
     page_size: int,
     page_budget: int,
     offsets: torch.Tensor,
+    share_pages: bool = False,
 ) -> Tuple[torch.Tensor, int]:
     """Select most relevant pages based on query-page similarity.
     
@@ -49,6 +50,7 @@ def _select_pages(
         page_size: Size of each page in the KV cache
         page_budget: Maximum number of pages to select
         offsets: Offsets for each KV head
+        share_pages: Whether to share KV pages across Query heads
         
     Returns:
         Tuple of (selected page indices, new cache sequence length)
@@ -58,7 +60,8 @@ def _select_pages(
     
     # All models have GQA
     query_squeezed = query.squeeze(0)
-    group_size = query_squeezed.size(0) // page_reps.size(2)
+    num_kv_heads = page_reps.size(2)
+    group_size = query_squeezed.size(0) // num_kv_heads
     page_reps = page_reps[:current_page_idx].repeat_interleave(group_size, dim=2)
         
     scores = torch.einsum(
@@ -67,8 +70,13 @@ def _select_pages(
         page_reps
     )
 
-    scores = scores.max(dim=2).values  # [num_pages, num_heads, head_dim]
-    scores = scores.sum(dim=-1)
+    scores = scores.max(dim=2).values  # [num_heads, num_pages, head_dim]
+
+    if share_pages:
+        scores = scores.reshape(num_kv_heads, group_size, scores.shape[1], -1)
+        scores = scores.sum(dim=(1, 3))
+    else:
+        scores = scores.sum(dim=-1)
     
     _, indices = torch.topk(
         scores,
@@ -80,6 +88,9 @@ def _select_pages(
     indices[:, -1] = current_page_idx
     new_cache_seqlens = cache_seqlens - (current_page_idx - page_budget) * page_size
     new_cache_seqlens = torch.full((query.shape[1],), new_cache_seqlens, device=query.device, dtype=torch.int32)
+
+    if share_pages:
+        indices = indices.repeat_interleave(group_size, dim=0)
 
     active_pages = indices.int() + offsets
     return active_pages, new_cache_seqlens
@@ -103,6 +114,7 @@ class QuestAttention(AbstractAttention):
         max_input_tokens: int,
         max_output_tokens: int,
         num_layers: int,
+        share_pages: bool,
     ):
         """Initialize Quest attention.
         
@@ -112,12 +124,15 @@ class QuestAttention(AbstractAttention):
             max_input_tokens: Maximum input token length (from config)
             max_output_tokens: Maximum output token length (from config)
             num_layers: Number of transformer layers (from model config)
+            share_pages: Whether to share pages across query heads
         """
         super().__init__()
         self.token_budget = token_budget
         self.page_size = page_size
         self.page_budget = token_budget // page_size
         assert token_budget % page_size == 0, "Token budget must be divisible by page size"
+
+        self.share_pages = share_pages
         
         self.max_pages = ((max_input_tokens + max_output_tokens) + page_size - 1) // page_size
         self.num_layers = num_layers
@@ -243,6 +258,7 @@ class QuestAttention(AbstractAttention):
             page_size=self.page_size,
             page_budget=self.page_budget,
             offsets=self.offsets,
+            share_pages=self.share_pages,
         )
 
         flash_attn_with_kvcache(
