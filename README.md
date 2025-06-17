@@ -8,14 +8,18 @@
 
 This repository serves two main purposes:
 1. **Reproducing results** from our paper "[The Sparse Frontier: Sparse Attention Trade-offs in Transformer LLMs](https://arxiv.org/abs/2504.17768)".
-2. **Providing a starting point** for your own sparse attention research and development.
+2. **Providing a starting point** for your own training-free sparse attention research and development.
 
-### Key Features
+### Why This Framework?
 
-- **Comprehensive evaluation suite**: 9 diverse tasks spanning retrieval, multi-hop reasoning, and information aggregation with rigorous sequence length control and standardized preprocessing pipelines.
-- **State-of-the-art sparse attention implementations**: 6 SOTA methods covering all major design paradigms—sparse prefilling (Vertical-Slash, Block-Sparse, FlexPrefill), sparse decoding (Quest), and KV cache compression (SnapKV, Ada-SnapKV)—with optimized CUDA kernels and unified interfaces.
-- **Model-agnostic scalability**: Universal sparse attention support across all vLLM-compatible models through centralized attention interception. Native tensor parallelism and intelligent workload scheduling automatically optimize GPU utilization across multi-GPU setups.
-- **Research-grade extensibility**: Clean modular architecture with abstract base classes designed for rapid prototyping and integration of novel sparse attention patterns and tasks.
+**The Problem**: vLLM is a highly optimized framework supporting hundreds of models, but its extensive codebase makes integrating custom sparse attention patterns extremely challenging. Researchers face a difficult choice: build from scratch with limited model support, use Hugging Face where each model requires navigating different implementation files to add support, or navigate vLLM's complex internals.
+
+**Our Solution**: We provide a clean abstraction that lets you focus on your sparse attention logic while automatically inheriting all of vLLM's optimizations and model compatibility. Here's what makes our framework unique:
+
+- **🎯 Elegant vLLM Integration**: Seamless sparse attention integration through our `AttentionHandler` that intercepts vLLM's execution flow. Write your sparse attention in 50 lines, not 5000—evaluate on 100 models, not 1. By implementing sparse attention in our framework, you automatically gain compatibility with all models supported by vLLM, from small 7B models to large 405B+ models across different architectures (Llama, Qwen, Mistral, etc.).
+- **⚡ State-of-the-art Baselines**: 6 representative SOTA patterns spanning key design dimensions for both inference phases—sparse prefilling (Vertical-Slash, Block-Sparse, FlexPrefill), sparse decoding (Quest), and KV cache compression (SnapKV, Ada-SnapKV)—with optimized Triton implementations.
+- **🔬 Comprehensive Evaluation**: 9 diverse tasks covering retrieval, multi-hop reasoning, and information aggregation with rigorous sequence length control and standardized preprocessing.
+- **🧪 Research-Grade Extensibility**: Clean modular architecture with abstract base classes designed for rapid prototyping of novel sparse attention patterns and tasks.
 
 ### Getting Started with Sparse Attention
 
@@ -56,7 +60,7 @@ Follow these steps to set up the environment and prepare for running experiments
     *   Edit the `paths` section in `configs/default.yaml`.
 
 3.  **Download Model Checkpoints:**
-    Obtain the pre-trained model weights you intend to evaluate from Hugging Face Hub. We prefer doing this manually instead of downloading it from HF as this way we have better control of what and where we download things.
+    Obtain the pre-trained model weights you intend to evaluate from Hugging Face Hub. We prefer doing this manually as this way we have better control of what and where we download things.
     
     *   Ensure the final directory structure for the downloaded checkpoints matches the format expected by the corresponding model configuration file (e.g., as defined in `configs/model/qwen_7b.yaml`). The `model.path` variable in these configs should point to the directory containing the model files.
 
@@ -86,26 +90,96 @@ python -m sparse_frontier.main attention=quest attention.args.token_budget=2048
 
 For detailed configuration documentation see **[CONFIGURATION.md](CONFIGURATION.md)**.
 
-**Note**: The current framework implementation supports only batch size = 1. This limitation stems from our initial experiments with methods that had kernels supporting only BS=1. Since then, we have followed a simple heuristic: for a given (Model Size, Method, Sequence Length) combination, we find the minimum tensor parallelism (TP) that provides sufficient total GPU memory to handle the evaluation, then use our intra-node scheduler to distribute BS=1 evaluations across the node's GPUs. For the majority of our evaluations, we achieved >95% GPU utilization based on `nvidia-smi`. Nevertheless, higher throughput and GPU utilization could likely be achieved with larger TP and BS>1. We plan to support batch size > 1 in the next release.
+**Note**: The current framework implementation supports only batch size = 1. This limitation stems from our initial experiments with methods that had kernels supporting only BS=1. Since then, we have followed a simple heuristic: for a given (Model Size, Method, Sequence Length) combination, we find the minimum tensor parallelism (TP) that provides sufficient total GPU memory to handle the evaluation, then use our [intra-node scheduler](./sparse_frontier/prediction.py) to distribute BS=1 evaluations across the node's GPUs. For the majority of our evaluations, we achieved >95% GPU utilization. Nevertheless, higher throughput and GPU utilization could likely be achieved with larger TP and BS>1. We plan to support batch size > 1 in the next release.
 
-### ( Test existing / Develop my own ) Training Free Sparse Attention
+### Develop Your Own Training-Free Sparse Attention
 
-We integrate custom sparse attention mechanisms by intercepting and modifying vLLM's standard attention execution flow. Here's a breakdown of the key components involved:
+Instead of wrestling with vLLM's complex internals, we provide a clean abstraction layer that lets you focus on your sparse attention logic.
 
-1.  **Patching vLLM's Attention:** We replace vLLM's default `FlashAttentionImpl.forward` method with our custom function, `vllm_patched_forward` (defined in `sparse_frontier/modelling/models/vllm_model.py`). This function serves as the entry point for our custom attention logic within the vLLM generation loop.
+#### How It Works
 
-2.  **Centralized Handling:** The `vllm_patched_forward` function delegates the core processing to an `AttentionHandler` instance (from `sparse_frontier/modelling/attention/handler.py`). This handler manages layer-specific state (like token counts per head) and differentiates between the prefill and decoding phases of generation.
+Our integration works by intercepting vLLM's attention execution at the FlashAttention level. When you register your sparse attention pattern, our framework:
 
-3.  **Abstract Attention Interface:** The actual attention computation logic for different patterns is encapsulated in classes that inherit from `AbstractAttention` (defined in `sparse_frontier/modelling/attention/abstract_attention.py`). The `AttentionHandler` retrieves the currently configured attention implementation using `get_attention()` (from `sparse_frontier/modelling/attention/registry.py`).
+1. **Patches vLLM's FlashAttention forward method** - The `vllm_patched_forward` function in [vllm_model.py](./sparse_frontier/modelling/models/vllm_model.py) replaces vLLM's default attention computation.
+2. **Routes attention calls through our handler** - The `AttentionHandler` from [handler.py](./sparse_frontier/modelling/attention/handler.py) manages layer state, prefill vs decode phases, and KV cache updates.
+3. **Executes your sparse attention** - Your implementation receives the same tensors vLLM would use, but with your custom attention logic.
 
-4.  **Implementing a Custom Pattern:** To introduce a new sparse attention mechanism:
-    *   Create a new class inheriting from `AbstractAttention`.
-    *   Implement the necessary methods based on your pattern's requirements:
-        *   `__call__(self, queries, keys, values, layer_idx)`: Implement the attention computation logic for the prefill phase. The default implementation uses standard FlashAttention.
-        *   `decode(self, query, keys, values, k_cache, v_cache, cache_seqlens, output, layer_idx)`: Implement the attention computation for the single-token decoding phase, typically involving interaction with the KV cache. The default uses `flash_attn_with_kvcache`. Specific methods like Quest (`efficient_decoding.py`) implement custom logic (e.g., page selection).
-        *   `kv_compress(self, queries, keys, values)`: Implement logic to compress or select keys and values *after* the prefill computation, before they are written to the KV cache by `update_kv_cache` in `handler.py`. See `SnapKVCompression` (`kv_compression.py`) for an example.
+The `swap_vllm_attention` function is registered as a vLLM plugin in [setup.py](./setup.py), ensuring all tensor parallel workers automatically load our custom implementation. This provides seamless Tensor Parallelism support without any additional configuration.
 
-5.  **Registration and Configuration:** Add your new class to the `ATTENTION_REGISTRY` in `sparse_frontier/modelling/attention/registry.py`. Additionally, create a corresponding YAML configuration file in `sparse_frontier/configs/attention/` that specifies any initialization arguments under `args`. This allows selecting your custom attention mechanism through the experiment configuration files.
+The integration is automatic - when you register your attention pattern, it becomes available to all vLLM-compatible models without any additional setup.
+
+#### Implementing a New Sparse Attention Pattern
+
+```python
+from sparse_frontier.modelling.attention.abstract_attention import AbstractAttention
+
+class MySparseAttention(AbstractAttention):
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        # Your initialization logic
+    
+    def __call__(self, queries, keys, values, layer_idx):
+        # Your prefill attention logic (uses dense prefill if not implemented)
+        return attention_output
+    
+    def decode(self, query, keys, values, k_cache, v_cache, cache_seqlens, output, layer_idx):
+        # Your decoding logic (uses dense decoding if not implemented)
+        pass
+    
+    def kv_compress(self, queries, keys, values):
+        # Your KV compression logic (leaves the KV Cache intact if not implemented)
+        return compressed_keys, compressed_values, seq_lens
+```
+
+That's it! No need to browse the huge vLLM codebase or worry about inference state handling, etc.
+
+Examples can be found in: [kv_compression.py](./sparse_frontier/modelling/attention/kv_compression.py) for SnapKV and AdaSnapKV; [efficient_prefilling.py](./sparse_frontier/modelling/attention/efficient_prefilling.py) for Vertical-Slash, Block-Sparse, and FlexPrefill, [efficient_decoding.py](./sparse_frontier/modelling/attention/efficient_decoding.py) for Quest.
+
+#### Registration
+
+Once you've implemented your sparse attention pattern, registration is a simple two-step process:
+
+**1. Register in the Attention Registry**
+
+Add your attention class to the `ATTENTION_REGISTRY` dictionary in [`sparse_frontier/modelling/attention/registry.py`](./sparse_frontier/modelling/attention/registry.py):
+
+```python
+from .your_module import MySparseAttention  # Import your implementation
+
+ATTENTION_REGISTRY = {
+    ...
+    'my_sparse_attention': MySparseAttention,  # Add your pattern here
+}
+```
+
+**2. Create Configuration File**
+
+Create a YAML configuration file at `configs/attention/my_sparse_attention.yaml` that defines your attention mechanism and its parameters:
+
+```yaml
+# @package _global_
+
+attention:
+  name: my_sparse_attention
+  args:
+    sparsity_ratio: 0.1
+```
+
+The configuration structure follows the pattern used by existing attention mechanisms. The `name` field must match your registry key, and `args` contains all the parameters that will be passed to your attention class constructor.
+
+**3. Run Evaluation**
+
+Your sparse attention pattern is now ready to use! Test it with any model and task:
+
+```bash
+# Basic evaluation with your new attention pattern
+python -m sparse_frontier.main task=ruler_niah model=qwen_7b attention=my_sparse_attention
+
+# Override specific attention parameters
+python -m sparse_frontier.main attention=my_sparse_attention attention.args.sparsity_ratio=0.05
+```
+
+**Result**: Your sparse attention works with any vLLM-compatible model and benefits from all vLLM optimizations.
 
 ### Extend the Test Data
 
