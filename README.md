@@ -7,14 +7,15 @@
 **The evaluation framework for training-free sparse attention in LLMs**
 
 This repository serves two main purposes:
-1. **Reproducing results** from our paper "[The Sparse Frontier: Sparse Attention Trade-offs in Transformer LLMs](https://arxiv.org/abs/2504.17768)"
-2. **Providing a starting point** for your own sparse attention research and development
+1. **Reproducing results** from our paper "[The Sparse Frontier: Sparse Attention Trade-offs in Transformer LLMs](https://arxiv.org/abs/2504.17768)".
+2. **Providing a starting point** for your own sparse attention research and development.
 
 ### Key Features
 
-- **Comprehensive task suite**: 9 diverse evaluation tasks spanning retrieval, multi-hop reasoning, and information aggregation with carefully tuned prompts and clean preprocessing pipelines
-- **Model-agnostic architecture**: Universal attention interface that works with any vLLM-supported model without model-specific modifications
-- **Clean extensibility**: Abstract base classes (`AbstractTask`, `AbstractSample`) for easy extension to new tasks and attention mechanisms
+- **Comprehensive evaluation suite**: 9 diverse tasks spanning retrieval, multi-hop reasoning, and information aggregation with rigorous sequence length control and standardized preprocessing pipelines.
+- **State-of-the-art sparse attention implementations**: 6 SOTA methods covering all major design paradigms—sparse prefilling (Vertical-Slash, Block-Sparse, FlexPrefill), sparse decoding (Quest), and KV cache compression (SnapKV, Ada-SnapKV)—with optimized CUDA kernels and unified interfaces.
+- **Model-agnostic scalability**: Universal sparse attention support across all vLLM-compatible models through centralized attention interception. Native tensor parallelism and intelligent workload scheduling automatically optimize GPU utilization across multi-GPU setups.
+- **Research-grade extensibility**: Clean modular architecture with abstract base classes designed for rapid prototyping and integration of novel sparse attention patterns and tasks.
 
 ### Getting Started with Sparse Attention
 
@@ -47,7 +48,7 @@ Follow these steps to set up the environment and prepare for running experiments
     # Adjust MAX_JOBS based on your system core count for faster compilation
     MAX_JOBS=8 python compile.py build_ext --inplace --build-lib ./sparse_frontier/modelling/attention/minference
     ```
-    For reference, the complete list of dependencies used in our experiments is available in `./assets/pipfreeze.txt`.
+    For reference, the complete list of dependencies used in our experiments is available in `./assets/pipfreeze.txt`. We tested the codebase on both A100 and H100 GPUs.
 
 2.  **Configure Paths:**
     Modify the default configuration file to specify where data, results, and checkpoints should be stored on your system.
@@ -55,7 +56,7 @@ Follow these steps to set up the environment and prepare for running experiments
     *   Edit the `paths` section in `configs/default.yaml`.
 
 3.  **Download Model Checkpoints:**
-    Obtain the pre-trained model weights you intend to evaluate from Hugging Face Hub. We prefer doing this manually instead of downloading it from HF as this way we have better control of what we download and the paths of everything.
+    Obtain the pre-trained model weights you intend to evaluate from Hugging Face Hub. We prefer doing this manually instead of downloading it from HF as this way we have better control of what and where we download things.
     
     *   Ensure the final directory structure for the downloaded checkpoints matches the format expected by the corresponding model configuration file (e.g., as defined in `configs/model/qwen_7b.yaml`). The `model.path` variable in these configs should point to the directory containing the model files.
 
@@ -84,6 +85,8 @@ python -m sparse_frontier.main attention=quest attention.args.token_budget=2048
 ```
 
 For detailed configuration documentation see **[CONFIGURATION.md](CONFIGURATION.md)**.
+
+**Note**: The current framework implementation supports only batch size = 1. This limitation stems from our initial experiments with methods that had kernels supporting only BS=1. Since then, we have followed a simple heuristic: for a given (Model Size, Method, Sequence Length) combination, we find the minimum tensor parallelism (TP) that provides sufficient total GPU memory to handle the evaluation, then use our intra-node scheduler to distribute BS=1 evaluations across the node's GPUs. For the majority of our evaluations, we achieved >95% GPU utilization based on `nvidia-smi`. Nevertheless, higher throughput and GPU utilization could likely be achieved with larger TP and BS>1. We plan to support batch size > 1 in the next release.
 
 ### ( Test existing / Develop my own ) Training Free Sparse Attention
 

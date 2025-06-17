@@ -2,7 +2,7 @@ from setuptools import setup, find_packages
 
 setup(
     name="sparse_frontier",
-    version="0.01",
+    version="0.1.0",
     description="Official implementation of the Sparse Frontier: Sparse Attention Trade-offs in Transformer LLMs",
     url="https://github.com/PiotrNawrot/sparse-frontier",
     packages=find_packages(include=['sparse_frontier', 'sparse_frontier.*']),
@@ -22,7 +22,6 @@ setup(
         "matplotlib==3.10.0",
         "wonderwords",
         "gitpython",
-        "matplotlib",
         "pandas",
         "seaborn",
         "statsmodels",
