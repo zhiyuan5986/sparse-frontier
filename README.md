@@ -23,7 +23,7 @@ This repository serves two main purposes:
 
 ### Getting Started with Sparse Attention
 
-If you're new to sparse attention and want to understand how these patterns work, we recommend starting with our companion repository: [nano-sparse-attention](https://github.com/PiotrNawrot/nano-sparse-attention). It provides clean, educational PyTorch implementations with interactive Jupyter notebooks that you can use to experiment and learn before diving into the optimized implementations in this repository.
+If you're new to sparse attention and want to understand how these patterns work, we recommend starting with our companion repository: [nano-sparse-attention](https://github.com/PiotrNawrot/nano-sparse-attention). It provides clean, educational PyTorch implementations with interactive Jupyter notebooks for experimenting and learning before diving into the optimized implementations here. Originally created for the [NeurIPS 2024 Dynamic Sparsity Workshop](https://dynamic-sparsity.github.io/), it serves as an excellent starting point for understanding sparse attention fundamentals.
 
 ## Setup
 
