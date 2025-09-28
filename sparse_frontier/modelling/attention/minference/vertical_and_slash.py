@@ -98,7 +98,8 @@ def _triton_mixed_sparse_attn_fwd_kernel(
         v = tl.load(v_ptrs + cols[:, None] * stride_vn, mask=n_mask[:, None], other=0.0)
         # -- compute qk --
         qk = tl.zeros([BLOCK_M, BLOCK_N], dtype=tl.float32)
-        qk = tl.where(m_mask & n_mask, qk, float("-inf"))
+        causal_mask = cols[None, :] <= offs_m[:, None]
+        qk = tl.where(m_mask & n_mask & causal_mask, qk, float("-inf"))
         qk += tl.dot(q, k)
         # -- compute scaling constant --
         m_i_new = tl.maximum(m_i, tl.max(qk, 1))
